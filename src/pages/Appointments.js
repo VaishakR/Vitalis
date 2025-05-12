@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   ChevronLeft,
   ChevronRight,
@@ -12,6 +13,7 @@ function Appointments() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedTab, setSelectedTab] = useState('upcoming');
   const [patientFilter, setPatientFilter] = useState('');
+  const navigate = useNavigate();
 
   const appointments = {
     upcoming: [
@@ -110,6 +112,10 @@ function Appointments() {
     }
     
     return [...prevMonthDays, ...currentMonthDays, ...nextMonthDays];
+  };
+
+  const handleAppointmentClick = (appointmentId) => {
+    navigate(`/transcribe/${appointmentId}`);
   };
 
   return (
@@ -253,11 +259,17 @@ function Appointments() {
         </div>
         </div>
 
-        {/* Filtered Appointment List (unchanged) */}
+        {/* Filtered Appointment List - Updated with enhanced hover effects */}
         <div className="space-y-4">
           {filteredAppointments.length > 0 ? (
             filteredAppointments.map((appointment) => (
-              <div key={appointment.id} className="flex justify-between items-center p-4 border border-emerald-100 rounded-lg hover:shadow-sm transition-all">
+              <div 
+                key={appointment.id} 
+                className="flex justify-between items-center p-4 border border-emerald-100 rounded-lg cursor-pointer
+                         hover:bg-emerald-50 hover:shadow-md transition-all duration-300 transform 
+                         hover:-translate-y-0.5 active:bg-emerald-100"
+                onClick={() => handleAppointmentClick(appointment.id)}
+              >
                 <div>
                   <p className="font-semibold text-gray-900">{appointment.patient}</p>
                   <p className="text-sm text-gray-600">{appointment.type}</p>

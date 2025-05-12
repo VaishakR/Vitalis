@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard';
 import Appointments from './pages/Appointments';
 import Patients from './pages/Patients';
 import Settings from './pages/Settings';
+import VoiceTranscription from './pages/VoiceTranscription';
 import Navbar from './components/Navbar';
 
 function App() {
@@ -21,6 +22,7 @@ function App() {
             <Route path="/appointments" element={<Appointments />} />
             <Route path="/patients" element={<Patients />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/transcribe/:appointmentId" element={<VoiceTranscription />} />
           </Routes>
         </main>
       </div>

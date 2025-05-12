@@ -1,8 +1,15 @@
 import React from 'react';
 import './Dashboard.css';
 import { FaCalendarCheck, FaUserInjured, FaChartLine, FaBell } from 'react-icons/fa';
+import { useNavigate } from 'react-router-dom';
 
 function Dashboard() {
+  const navigate = useNavigate();
+
+  const handleAppointmentClick = (appointmentId) => {
+    navigate(`/transcribe/${appointmentId}`);
+  };
+
   return (
     <div className="dashboard">
       <h1 className="page-title">Dashboard</h1>
@@ -46,7 +53,10 @@ function Dashboard() {
         <div className="upcoming-appointments card">
           <h2>Upcoming Appointments</h2>
           <div className="appointment-list">
-            <div className="appointment-item">
+            <div 
+              className="appointment-item cursor-pointer hover:bg-emerald-50 hover:shadow-md transition-all duration-300 transform hover:-translate-y-0.5 active:bg-emerald-100" 
+              onClick={() => handleAppointmentClick('app1')}
+            >
               <div className="appointment-time">10:00 AM</div>
               <div className="appointment-details">
                 <h3>John Doe</h3>
@@ -55,7 +65,10 @@ function Dashboard() {
               <div className="appointment-status">Confirmed</div>
             </div>
             
-            <div className="appointment-item">
+            <div 
+              className="appointment-item cursor-pointer hover:bg-emerald-50 hover:shadow-md transition-all duration-300 transform hover:-translate-y-0.5 active:bg-emerald-100"
+              onClick={() => handleAppointmentClick('app2')}
+            >
               <div className="appointment-time">11:30 AM</div>
               <div className="appointment-details">
                 <h3>Jane Smith</h3>
@@ -64,7 +77,10 @@ function Dashboard() {
               <div className="appointment-status">Confirmed</div>
             </div>
             
-            <div className="appointment-item">
+            <div 
+              className="appointment-item cursor-pointer hover:bg-emerald-50 hover:shadow-md transition-all duration-300 transform hover:-translate-y-0.5 active:bg-emerald-100"
+              onClick={() => handleAppointmentClick('app3')}
+            >
               <div className="appointment-time">2:00 PM</div>
               <div className="appointment-details">
                 <h3>Robert Johnson</h3>
