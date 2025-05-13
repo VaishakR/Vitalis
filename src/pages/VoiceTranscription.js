@@ -11,9 +11,10 @@ const VoiceTranscription = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [emrReport, setEmrReport] = useState(null);
   const [audioUrl, setAudioUrl] = useState(null);
+  const [error, setError] = useState(null);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
-  const recognitionRef = useRef(null);
+  const wsRef = useRef(null);
 
   // Sample patient data (in a real app, this would come from your database)
   const patientData = {
@@ -23,46 +24,113 @@ const VoiceTranscription = () => {
     // Add more as needed
   };
 
+  // Initialize WebSocket connection
   useEffect(() => {
-    // Initialize speech recognition if available in browser
-    if ('webkitSpeechRecognition' in window) {
-      const SpeechRecognition = window.webkitSpeechRecognition;
-      recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = true;
-      recognitionRef.current.interimResults = true;
-
-      recognitionRef.current.onresult = (event) => {
-        let interimTranscript = '';
-        let finalTranscript = '';
-
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcriptText = event.results[i][0].transcript;
-          if (event.results[i].isFinal) {
-            finalTranscript += transcriptText;
-          } else {
-            interimTranscript += transcriptText;
-          }
-        }
-
-        setTranscript(prevTranscript => prevTranscript + finalTranscript);
-      };
-
-      recognitionRef.current.onerror = (event) => {
-        console.error('Speech recognition error', event.error);
-      };
-    } else {
-      alert('Speech recognition is not supported in your browser. Please use Chrome or Edge.');
-    }
-
+    // Clean up function
     return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.close();
       }
     };
   }, []);
 
+  const connectWebSocket = () => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      return; // Already connected
+    }
+
+    setError(null);
+    const ws = new WebSocket('ws://localhost:8000/transcription');
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      console.log('WebSocket connection established');
+    };
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      console.log('Received WebSocket message:', data);
+
+      switch (data.type) {
+        case 'transcription':
+          setTranscript(prev => prev + ' ' + data.text);
+          break;
+        case 'error':
+          setError(data.message);
+          setIsProcessing(false);
+          setIsRecording(false);
+          break;
+        case 'final_analysis':
+          setIsProcessing(false);
+          if (data.analysis) {
+            // Convert server analysis to frontend format
+            const analysis = data.analysis;
+            
+            const mockReport = {
+              patientInfo: {
+                name: patientData[appointmentId]?.name || "Unknown Patient",
+                age: patientData[appointmentId]?.age || "Unknown",
+                gender: patientData[appointmentId]?.gender || "Not specified"
+              },
+              chiefComplaint: analysis.chiefComplaint || "Not specified",
+              history: analysis.historyOfPresentIllness ? 
+                Object.entries(analysis.historyOfPresentIllness)
+                  .filter(([_, value]) => value && value !== "")
+                  .map(([key, value]) => `${key}: ${value}`)
+                  .join("\n") : 
+                "No history provided",
+              examination: analysis.physicalExamination ? 
+                Object.entries(analysis.physicalExamination)
+                  .map(([system, details]) => {
+                    if (typeof details === 'object') {
+                      return `${system}: ${Object.entries(details)
+                        .filter(([_, value]) => value && value !== "")
+                        .map(([key, value]) => `${key}: ${value}`)
+                        .join(", ")}`;
+                    }
+                    return `${system}: ${details}`;
+                  })
+                  .filter(text => !text.endsWith(": "))
+                  .join("\n") : 
+                "No examination details",
+              assessment: analysis.consultationDetails || "No assessment provided",
+              plan: analysis.painScreening?.management || "No treatment plan provided"
+            };
+            
+            setEmrReport(mockReport);
+            
+            // If the server indicates navigation should happen
+            if (data.shouldNavigate) {
+              // You could navigate or just show the report
+            }
+          }
+          break;
+        default:
+          console.log('Unknown message type:', data.type);
+      }
+    };
+
+    ws.onclose = (event) => {
+      console.log('WebSocket connection closed:', event.code, event.reason);
+      if (isRecording) {
+        setError('Connection to transcription service lost. Please try again.');
+        setIsRecording(false);
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      setError('Failed to connect to transcription service. Please ensure the server is running.');
+      setIsRecording(false);
+    };
+  };
+
   const startRecording = async () => {
     try {
+      // Connect to WebSocket
+      connectWebSocket();
+      
+      // Get audio for local playback
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       
       mediaRecorderRef.current = new MediaRecorder(stream);
@@ -82,17 +150,20 @@ const VoiceTranscription = () => {
 
       mediaRecorderRef.current.start();
       
-      // Start speech recognition
-      if (recognitionRef.current) {
-        recognitionRef.current.start();
+      // Tell the server to start recording
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ command: "start" }));
+      } else {
+        throw new Error("WebSocket not connected");
       }
       
       setIsRecording(true);
       setTranscript('');
       setEmrReport(null);
+      setError(null);
     } catch (error) {
-      console.error('Error accessing microphone:', error);
-      alert('Unable to access the microphone. Please check permissions.');
+      console.error('Error starting recording:', error);
+      setError('Unable to start recording. Please check permissions and ensure the server is running.');
     }
   };
 
@@ -100,67 +171,70 @@ const VoiceTranscription = () => {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
       
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
+      // Tell the server to stop recording and process
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ command: "stop" }));
+        setIsProcessing(true);
       }
 
       setIsRecording(false);
     }
   };
 
-  const generateEMR = async () => {
-    if (!transcript.trim()) {
-      alert('Please record a conversation first before generating an EMR report.');
-      return;
-    }
-
+  const generateEMR = () => {
+    if (!transcript) return;
     setIsProcessing(true);
     
-    // Simulate API processing time
-    setTimeout(() => {
-      // Generate a mock EMR report based on the transcript
-      const patient = patientData[appointmentId] || { 
-        name: "Unknown Patient", 
-        age: "Unknown", 
-        gender: "Not specified" 
-      };
+    // Tell the server to generate EMR
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ 
+        command: "generate_emr",
+        transcript: transcript  // Send the transcript for processing
+      }));
       
-      // Extract potential medical information from transcript
-      let chiefComplaint = "Not specified";
-      if (transcript.toLowerCase().includes("pain")) {
-        chiefComplaint = "Patient reports pain";
-      } else if (transcript.toLowerCase().includes("fever")) {
-        chiefComplaint = "Patient reports fever";
-      } else if (transcript.toLowerCase().includes("cough")) {
-        chiefComplaint = "Patient reports cough";
-      }
-      
-      const mockReport = {
-        patientInfo: {
-          name: patient.name,
-          age: patient.age,
-          gender: patient.gender
-        },
-        chiefComplaint: chiefComplaint,
-        history: "Patient history based on conversation transcript. This is a mock report as no backend is available.",
-        examination: "Examination findings noted during the visit.",
-        assessment: "Medical assessment based on patient symptoms and examination.",
-        plan: "Treatment plan and follow-up recommendations."
-      };
-      
-      setEmrReport(mockReport);
+      // After a slight delay to ensure processing has started
+      setTimeout(() => {
+        // Generate a unique report ID
+        const reportId = `report_${Date.now()}`;
+        
+        // Create a simple EMR report from available data
+        const tempReport = {
+          patientInfo: {
+            name: patientData[appointmentId]?.name || "Unknown Patient",
+            age: patientData[appointmentId]?.age || "Unknown",
+            gender: patientData[appointmentId]?.gender || "Not specified"
+          },
+          transcript: transcript,
+          pending: true  // Mark as pending so the EMR page knows to update it
+        };
+        
+        // Save to localStorage
+        const savedReports = JSON.parse(localStorage.getItem('emrReports') || '{}');
+        savedReports[reportId] = tempReport;
+        localStorage.setItem('emrReports', JSON.stringify(savedReports));
+        
+        // Navigate to the report page which will show loading state
+        navigate(`/emr-report/${reportId}`);
+      }, 500);
+    } else {
+      setError("WebSocket not connected. Please refresh the page and try again.");
       setIsProcessing(false);
-    }, 2000);
+    }
   };
 
   const saveEMR = () => {
     if (!emrReport) return;
 
-    // Without a backend, we'll simulate saving by showing a success message
-    alert('EMR Report saved successfully (simulated)');
+    // Generate a unique report ID (in production, your backend would do this)
+    const reportId = `report_${Date.now()}`;
     
-    // Navigate back to appointments page
-    navigate('/appointments');
+    // Save to localStorage (in production, this would be a backend API call)
+    const savedReports = JSON.parse(localStorage.getItem('emrReports') || '{}');
+    savedReports[reportId] = emrReport;
+    localStorage.setItem('emrReports', JSON.stringify(savedReports));
+    
+    // Navigate to the report page
+    navigate(`/emr-report/${reportId}`);
   };
 
   return (
@@ -217,6 +291,12 @@ const VoiceTranscription = () => {
             {transcript ? transcript : "Transcription will appear here..."}
           </div>
         </div>
+        
+        {error && (
+          <div className="mb-6 text-red-500 text-sm">
+            {error}
+          </div>
+        )}
         
         <div className="flex justify-center space-x-4">
           <button

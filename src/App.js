@@ -7,6 +7,7 @@ import Patients from './pages/Patients';
 import Settings from './pages/Settings';
 import VoiceTranscription from './pages/VoiceTranscription';
 import Navbar from './components/Navbar';
+import EMRReport from './pages/EMRReport';
 
 function App() {
   return (
@@ -23,6 +24,7 @@ function App() {
             <Route path="/patients" element={<Patients />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/transcribe/:appointmentId" element={<VoiceTranscription />} />
+            <Route path="/emr-report/:reportId" element={<EMRReport />} />
           </Routes>
         </main>
       </div>
